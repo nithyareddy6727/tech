@@ -35,6 +35,12 @@ begin
     (steel_id, steel_location_id, 17), (chairs_id, west_location_id, 38),
     (bolts_id, west_location_id, 40), (bolts_id, east_location_id, 30)
   on conflict (product_id, location_id) do update set quantity = excluded.quantity;
+  update public.stock set average_unit_cost = case
+    when product_id = steel_id then 10.00
+    when product_id = chairs_id then 25.00
+    when product_id = bolts_id then 0.50
+  end
+  where product_id in (steel_id, chairs_id, bolts_id);
 
   insert into public.stock_ledger(product_id, location_id, type, quantity_change, quantity_before, quantity_after, created_by, created_at)
   values (steel_id, steel_location_id, 'INITIAL', 40, 0, 40, demo_user_id, now() - interval '18 days');
@@ -77,5 +83,10 @@ begin
     quantity_after, source_location_id, destination_location_id, created_by, created_at)
   values (bolts_id, west_location_id, operation_id, 'TRANSFER_OUT', -10, 50, 40, west_location_id, east_location_id, demo_user_id, now() - interval '3 days'),
     (bolts_id, east_location_id, operation_id, 'TRANSFER_IN', 10, 20, 30, west_location_id, east_location_id, demo_user_id, now() - interval '3 days');
+
+  update public.stock_ledger set
+    unit_cost = case when product_id = steel_id then 10.00 when product_id = chairs_id then 25.00 else 0.50 end,
+    value_change = round(quantity_change * case when product_id = steel_id then 10.00 when product_id = chairs_id then 25.00 else 0.50 end, 4)
+  where product_id in (steel_id, chairs_id, bolts_id);
 end;
 $seed$;

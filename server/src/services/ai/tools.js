@@ -18,11 +18,13 @@ async function resolveProduct(name) {
 
 async function stockRows(productId) {
   const { data, error } = await supabase.from('stock')
-    .select('quantity, location_id, locations(id, name, code, warehouse_id, warehouses(name))')
+    .select('quantity, average_unit_cost, inventory_value, location_id, locations(id, name, code, warehouse_id, warehouses(name))')
     .eq('product_id', productId);
   if (error) throw new Error(error.message);
   return (data || []).map((row) => ({ locationId: row.location_id, location: row.locations?.name,
-    warehouse: row.locations?.warehouses?.name, quantity: Number(row.quantity) }));
+    warehouse: row.locations?.warehouses?.name, quantity: Number(row.quantity),
+    averageUnitCost: row.average_unit_cost === null ? null : Number(row.average_unit_cost),
+    inventoryValue: row.inventory_value === null ? null : Number(row.inventory_value) }));
 }
 
 async function recentOperations(type) {
@@ -98,7 +100,8 @@ export async function executeTool(name, args) {
     if (error) throw new Error(error.message);
     const current = (await stockRows(product.id)).find((row) => row.locationId === args.locationId);
     if (!current) throw new Error('No stock record exists at that location.');
-    return draftRecommendation('REORDER', args.reason, { locationId: args.locationId, quantity: args.quantity }, [{ product: { name: product.name, sku: product.sku, reorderLevel: Number(product.reorder_level) }, current }], product.id);
+    if (current.averageUnitCost === null) throw new Error('Cannot draft a priced reorder because this location has no known average unit cost. Add a costed receipt first.');
+    return draftRecommendation('REORDER', args.reason, { locationId: args.locationId, quantity: args.quantity, unitCost: current.averageUnitCost }, [{ product: { name: product.name, sku: product.sku, reorderLevel: Number(product.reorder_level) }, current }], product.id);
   }
   throw new Error(`Unknown AI tool: ${name}`);
 }

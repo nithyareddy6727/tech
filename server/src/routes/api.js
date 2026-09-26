@@ -13,15 +13,16 @@ const validNumber = (value, label, { zero = true } = {}) => {
   if (!Number.isFinite(number) || (zero ? number < 0 : number <= 0)) fail(`${label} must be ${zero ? 'non-negative' : 'positive'}.`);
   return number;
 };
-function validateItems(items, adjustment = false) {
+function validateItems(items, adjustment = false, receipt = false) {
   if (!Array.isArray(items) || !items.length) fail('At least one item is required.');
   const seen = new Set();
   return items.map((item) => {
     if (!item.productId || seen.has(item.productId)) fail('Each item needs a unique productId.');
     seen.add(item.productId);
-    return adjustment
-      ? { productId: item.productId, countedQuantity: validNumber(item.countedQuantity, 'countedQuantity') }
-      : { productId: item.productId, quantity: validNumber(item.quantity, 'quantity', { zero: false }) };
+    if (adjustment) return { productId: item.productId, countedQuantity: validNumber(item.countedQuantity, 'countedQuantity') };
+    const result = { productId: item.productId, quantity: validNumber(item.quantity, 'quantity', { zero: false }) };
+    if (receipt) result.unitCost = validNumber(item.unitCost, 'unitCost');
+    return result;
   });
 }
 
@@ -30,10 +31,15 @@ apiRouter.get('/products', asyncRoute(async (req, res) => res.json(await listPro
 apiRouter.post('/products', asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name?.trim() || !body.sku?.trim() || !body.unit?.trim()) fail('name, sku, and unit are required.');
+  const initialStock = validNumber(body.initialStock ?? 0, 'initialStock');
+  const initialUnitCost = body.initialUnitCost === undefined || body.initialUnitCost === null || body.initialUnitCost === ''
+    ? null
+    : validNumber(body.initialUnitCost, 'initialUnitCost');
+  if (initialStock > 0 && initialUnitCost === null) fail('initialUnitCost is required when initialStock is greater than zero.');
   const product = await createProduct({
     name: body.name.trim(), sku: body.sku.trim(), categoryId: body.categoryId || null,
     unit: body.unit.trim(), reorderLevel: validNumber(body.reorderLevel ?? 0, 'reorderLevel'),
-    initialStock: validNumber(body.initialStock ?? 0, 'initialStock'), locationId: body.locationId || null
+    initialStock, initialUnitCost, locationId: body.locationId || null
   }, req.user.id);
   res.status(201).json(product);
 }));
@@ -45,7 +51,7 @@ const operationRoute = (type, requiredLocation, locationKey) => asyncRoute(async
   const body = req.body || {};
   if (requiredLocation && !body[locationKey]) fail(`${locationKey} is required.`);
   if (type === 'TRANSFER' && body.sourceLocationId === body.destinationLocationId) fail('Transfer locations must differ.');
-  const input = { items: validateItems(body.items, type === 'ADJUSTMENT') };
+  const input = { items: validateItems(body.items, type === 'ADJUSTMENT', type === 'RECEIPT') };
   if (type === 'RECEIPT') {
     if (!body.supplier?.trim()) fail('supplier is required.');
     input.supplier = body.supplier.trim(); input.destinationLocationId = body.destinationLocationId;

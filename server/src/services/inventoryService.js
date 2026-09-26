@@ -12,6 +12,7 @@ export async function createProduct(input, userId) {
     p_unit: input.unit,
     p_reorder_level: input.reorderLevel,
     p_initial_stock: input.initialStock,
+    p_initial_unit_cost: input.initialUnitCost ?? null,
     p_location_id: input.locationId || null,
     p_user_id: userId
   });
@@ -31,7 +32,7 @@ export async function updateProduct(id, input) {
 
 export async function getProduct(id) {
   const { data, error } = await supabase.from('products')
-    .select('*, categories(name), stock(quantity, location_id, locations(id, name, code, warehouse_id, warehouses(name)))')
+    .select('*, categories(name), stock(quantity, average_unit_cost, inventory_value, location_id, locations(id, name, code, warehouse_id, warehouses(name)))')
     .eq('id', id).single();
   throwIfError(error);
   return data;
@@ -39,7 +40,7 @@ export async function getProduct(id) {
 
 export async function listProducts({ search, categoryId, lowStock } = {}) {
   let query = supabase.from('products')
-    .select('*, categories(name), stock(quantity, location_id, locations(id, name, code, warehouse_id, warehouses(name)))')
+    .select('*, categories(name), stock(quantity, average_unit_cost, inventory_value, location_id, locations(id, name, code, warehouse_id, warehouses(name)))')
     .order('name');
   if (search) query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%`);
   if (categoryId) query = query.eq('category_id', categoryId);
@@ -47,7 +48,17 @@ export async function listProducts({ search, categoryId, lowStock } = {}) {
   throwIfError(error);
   const products = (data || []).map((product) => ({
     ...product,
-    totalStock: (product.stock || []).reduce((total, row) => total + Number(row.quantity), 0)
+    totalStock: (product.stock || []).reduce((total, row) => total + Number(row.quantity), 0),
+    totalInventoryValue: (product.stock || []).some((row) => Number(row.quantity) > 0 && row.inventory_value === null)
+      ? null
+      : (product.stock || []).reduce((total, row) => total + Number(row.inventory_value || 0), 0),
+    averageUnitCost: (() => {
+      const quantity = (product.stock || []).reduce((total, row) => total + Number(row.quantity), 0);
+      const inventoryValue = (product.stock || []).reduce((total, row) => total + Number(row.inventory_value || 0), 0);
+      return quantity > 0 && !(product.stock || []).some((row) => Number(row.quantity) > 0 && row.inventory_value === null)
+        ? inventoryValue / quantity
+        : null;
+    })()
   }));
   return lowStock === 'true'
     ? products.filter((product) => product.totalStock <= Number(product.reorder_level))
