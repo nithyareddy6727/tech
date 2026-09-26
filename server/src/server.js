@@ -7,7 +7,7 @@ import { apiRouter } from './routes/api.js';
 
 const app = express();
 app.disable('x-powered-by');
-app.use(cors({ origin: [config.frontendUrl, 'http://localhost:5173'], methods: ['GET', 'POST', 'PUT', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
+app.use(cors({ origin: [config.frontendUrl, 'http://localhost:5173'], methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '1mb' }));
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.use('/api', requireAuth, apiRouter);

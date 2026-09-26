@@ -11,7 +11,7 @@ function evidenceFrom(result) {
   return [];
 }
 
-export async function chat(message) {
+export async function chat(message, userId) {
   if (!config.llmApiKey) {
     const error = new Error('AI is not configured. Set LLM_API_KEY on the backend.');
     error.status = 503;
@@ -43,7 +43,7 @@ export async function chat(message) {
       let result;
       try {
         const args = JSON.parse(call.function.arguments || '{}');
-        result = await executeTool(call.function.name, args);
+        result = await executeTool(call.function.name, args, { userId });
         evidence.push(...evidenceFrom(result));
         if (result.recommendation) {
           const saved = result.recommendation;
@@ -73,9 +73,9 @@ export async function approveRecommendation(id, userId) {
   return data;
 }
 
-export async function rejectRecommendation(id) {
+export async function rejectRecommendation(id, userId) {
   const { data, error } = await supabase.from('ai_recommendations').update({ status: 'REJECTED' })
-    .eq('id', id).eq('status', 'DRAFT').select('id, status').maybeSingle();
+    .eq('id', id).eq('created_by', userId).eq('status', 'DRAFT').select('id, status').maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) {
     const missing = new Error('Draft recommendation not found or already processed.');

@@ -8,8 +8,17 @@ Apply migrations in order:
 
 1. `supabase/migrations/001_initial_schema.sql`
 2. `supabase/migrations/002_inventory_costing.sql`
+3. `supabase/migrations/003_workflows_and_access.sql`
 
-For demo data, apply `supabase/seed.sql` after creating a Supabase Auth user. The sample products are seeded with explicit illustrative costs.
+For demo data, apply `supabase/seed.sql` after creating a Supabase Auth user. The sample products are seeded with explicit illustrative costs. The script records its completion and skips subsequent runs; reset demo data manually only in a disposable project.
+
+## Workflow Additions
+
+- Delivery validation now requires `READY` → `PICKED` → `PACKED` → `DONE`. Use `POST /api/operations/:id/pick` and `POST /api/operations/:id/pack` before `/validate`.
+- Categories have list/create/update/delete endpoints. Products use category selection backed by those records.
+- Warehouse and location settings support create and update through the API/UI.
+- Dashboard and low-stock alert views accept `type`, `status`, `warehouseId`, `locationId`, `categoryId`, and `search` filters.
+- New AI recommendations record their creator. Approval and rejection are restricted to that user.
 
 ## Cost Rules
 

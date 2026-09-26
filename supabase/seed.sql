@@ -3,7 +3,7 @@ do $seed$
 declare
   demo_user_id uuid;
   category_id uuid;
-  warehouse_id uuid;
+  v_warehouse_id uuid;
   steel_location_id uuid;
   west_location_id uuid;
   east_location_id uuid;
@@ -16,14 +16,18 @@ declare
 begin
   select id into demo_user_id from auth.users order by created_at limit 1;
   if demo_user_id is null then raise exception 'Create a Supabase Auth user before running the demo seed.'; end if;
+  if exists (select 1 from public.demo_seed_runs where seed_key = 'stocksense-demo-v1') then
+    raise notice 'StockSense demo seed was already applied; skipping.';
+    return;
+  end if;
   insert into public.categories(name) values ('Raw Materials') on conflict (name) do update set name = excluded.name returning id into category_id;
   insert into public.warehouses(name, code, address) values ('Central Warehouse', 'CENTRAL', 'Demo address')
-    on conflict (code) do update set name = excluded.name returning id into warehouse_id;
-  insert into public.locations(warehouse_id, name, code) values (warehouse_id, 'Steel Storage', 'STEEL')
+    on conflict (code) do update set name = excluded.name returning id into v_warehouse_id;
+  insert into public.locations(warehouse_id, name, code) values (v_warehouse_id, 'Steel Storage', 'STEEL')
     on conflict (warehouse_id, code) do update set name = excluded.name returning id into steel_location_id;
-  insert into public.locations(warehouse_id, name, code) values (warehouse_id, 'West Aisle', 'WEST')
+  insert into public.locations(warehouse_id, name, code) values (v_warehouse_id, 'West Aisle', 'WEST')
     on conflict (warehouse_id, code) do update set name = excluded.name returning id into west_location_id;
-  insert into public.locations(warehouse_id, name, code) values (warehouse_id, 'East Aisle', 'EAST')
+  insert into public.locations(warehouse_id, name, code) values (v_warehouse_id, 'East Aisle', 'EAST')
     on conflict (warehouse_id, code) do update set name = excluded.name returning id into east_location_id;
   insert into public.products(name, sku, category_id, unit, reorder_level) values ('Steel Rods', 'STEEL-001', category_id, 'rod', 20)
     on conflict (sku) do update set name = excluded.name, reorder_level = excluded.reorder_level returning id into steel_id;
@@ -59,7 +63,7 @@ begin
   insert into public.operations(type, status, supplier, destination_location_id, created_by, created_at, validated_at)
   values ('RECEIPT', 'DONE', 'Demo Steel Supplier', steel_location_id, demo_user_id, now() - interval '2 days', now() - interval '2 days')
   returning id into operation_id;
-  insert into public.operation_items(operation_id, product_id, quantity) values (operation_id, steel_id, 5);
+  insert into public.operation_items(operation_id, product_id, quantity, unit_cost) values (operation_id, steel_id, 5, 10.00);
   insert into public.stock_ledger(product_id, location_id, operation_id, type, quantity_change, quantity_before,
     quantity_after, destination_location_id, created_by, created_at)
   values (steel_id, steel_location_id, operation_id, 'RECEIPT', 5, 12, 17, steel_location_id, demo_user_id, now() - interval '2 days');
@@ -88,5 +92,6 @@ begin
     unit_cost = case when product_id = steel_id then 10.00 when product_id = chairs_id then 25.00 else 0.50 end,
     value_change = round(quantity_change * case when product_id = steel_id then 10.00 when product_id = chairs_id then 25.00 else 0.50 end, 4)
   where product_id in (steel_id, chairs_id, bolts_id);
+  insert into public.demo_seed_runs(seed_key) values ('stocksense-demo-v1');
 end;
 $seed$;

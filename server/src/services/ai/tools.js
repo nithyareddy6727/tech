@@ -35,9 +35,9 @@ async function recentOperations(type) {
   return data || [];
 }
 
-async function draftRecommendation(type, recommendation, parameters, evidence, productId) {
+async function draftRecommendation(type, recommendation, parameters, evidence, productId, userId) {
   const { data, error } = await supabase.from('ai_recommendations').insert({
-    product_id: productId, type, recommendation, parameters, evidence, status: 'DRAFT'
+    product_id: productId, created_by: userId, type, recommendation, parameters, evidence, status: 'DRAFT'
   }).select('id, product_id, type, recommendation, parameters, evidence, status, created_at').single();
   if (error) throw new Error(error.message);
   return { evidence, recommendation: { ...data, requiresApproval: true } };
@@ -76,7 +76,7 @@ async function productTool(name, args) {
   return { evidence: [{ productId: product.id, name: product.name, reorderLevel: Number(product.reorder_level), locations: [...locations].sort((a, b) => b.quantity - a.quantity) }] };
 }
 
-export async function executeTool(name, args) {
+export async function executeTool(name, args, { userId } = {}) {
   if (['get_product_stock', 'get_stock_by_location', 'get_stock_history', 'calculate_stockout_risk', 'find_surplus_locations'].includes(name)) {
     return productTool(name, args);
   }
@@ -92,7 +92,7 @@ export async function executeTool(name, args) {
     const destination = rows.find((row) => row.locationId === args.destinationLocationId);
     if (!source || source.quantity < args.quantity) throw new Error('The source location does not have enough available stock.');
     if (!destination) throw new Error('Destination location is not stocked for this product; choose a valid location.');
-    return draftRecommendation('TRANSFER', args.reason, { sourceLocationId: args.sourceLocationId, destinationLocationId: args.destinationLocationId, items: [{ productId: args.productId, quantity: args.quantity }] }, [{ source, destination }], args.productId);
+    return draftRecommendation('TRANSFER', args.reason, { sourceLocationId: args.sourceLocationId, destinationLocationId: args.destinationLocationId, items: [{ productId: args.productId, quantity: args.quantity }] }, [{ source, destination }], args.productId, userId);
   }
   if (name === 'create_reorder_draft') {
     if (!(args.quantity > 0)) throw new Error('Reorder quantity must be positive.');
@@ -101,7 +101,7 @@ export async function executeTool(name, args) {
     const current = (await stockRows(product.id)).find((row) => row.locationId === args.locationId);
     if (!current) throw new Error('No stock record exists at that location.');
     if (current.averageUnitCost === null) throw new Error('Cannot draft a priced reorder because this location has no known average unit cost. Add a costed receipt first.');
-    return draftRecommendation('REORDER', args.reason, { locationId: args.locationId, quantity: args.quantity, unitCost: current.averageUnitCost }, [{ product: { name: product.name, sku: product.sku, reorderLevel: Number(product.reorder_level) }, current }], product.id);
+    return draftRecommendation('REORDER', args.reason, { locationId: args.locationId, quantity: args.quantity, unitCost: current.averageUnitCost }, [{ product: { name: product.name, sku: product.sku, reorderLevel: Number(product.reorder_level) }, current }], product.id, userId);
   }
   throw new Error(`Unknown AI tool: ${name}`);
 }
